@@ -1,0 +1,15 @@
+name: weather-governance-env
+dependencies:
+- python=3.8
+- pip:
+  - numpy
+  - onnxruntime
+  - joblib
+  - scikit-learn
+  - inference-schema[numpy-support]
+  - azureml-defaults
+  - azureml-core
+  - applicationinsights
+channels:
+- anaconda
+- conda-forge

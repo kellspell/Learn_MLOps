@@ -1,0 +1,79 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - azure-pipelines.yml
+      - CICD_Pipelines/**
+      - Deploy/**
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  serviceConnection: 'mlops_sp'  # Azure DevOps service connection name
+
+stages:
+  - stage: Validate
+    displayName: 'Validate score.py'
+    jobs:
+      - job: Lint
+        displayName: 'Lint check'
+        steps:
+          - checkout: self
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '3.8'
+          - script: |
+              pip install pyflakes
+              python -m pyflakes CICD_Pipelines/score.py
+            displayName: 'Lint score.py'
+
+  - stage: Deploy_ACI
+    displayName: 'Deploy to ACI (Staging)'
+    dependsOn: Validate
+    jobs:
+      - job: DeployACI
+        displayName: 'Deploy to Azure Container Instance'
+        steps:
+          - checkout: self
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '3.8'
+          - task: AzureCLI@2
+            displayName: 'Deploy to ACI'
+            inputs:
+              azureSubscription: 'mlops_sp'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                pip install azureml-core importlib_resources azure-cli-core
+                cd $(Build.SourcesDirectory)/CICD_Pipelines
+                python deploy.py --target aci
+
+  - stage: Deploy_AKS
+    displayName: 'Deploy to AKS (Production)'
+    dependsOn: Deploy_ACI
+    jobs:
+      - deployment: DeployAKS
+        displayName: 'Deploy to Azure Kubernetes Service'
+        environment: production
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: '3.8'
+                - task: AzureCLI@2
+                  displayName: 'Deploy to AKS'
+                  inputs:
+                    azureSubscription: 'mlops_sp'
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      pip install azureml-core importlib_resources azure-cli-core
+                      cd $(Build.SourcesDirectory)/CICD_Pipelines
+                      python deploy.py --target aks
